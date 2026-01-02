@@ -16,13 +16,21 @@ export const generateDiagramFromText = async (prompt: string, currentCode: strin
     You are an expert Mermaid.js architect. 
     Your goal is to provide valid, high-quality Mermaid.js code based on user requests.
     
-    CRITICAL SYNTAX RULES:
+    CRITICAL SYNTAX RULES TO AVOID "NODE_STRING" ERRORS:
     1. ONLY return the Mermaid code block. No explanation. No backticks.
-    2. Comments must start with DOUBLE percentage signs (%%). NEVER use a single %.
-    3. Labels with spaces or special characters (like "đầu ra khác") are safer when enclosed in quotes if they cause issues, but Mermaid flowchart labels like "|text|" are usually fine unless they contain restricted symbols.
-    4. Ensure every node used in a relationship is defined or follows the standard syntax: ID[Label] or ID(Label).
-    5. Statements can end with a newline or a semicolon, but be consistent.
-    6. For flowcharts, the direction is usually 'graph TD' or 'graph LR'.
+    2. ONE STATEMENT PER LINE: Every node definition or relationship MUST be on its own line.
+    3. NO TRAILING TEXT: Never place any text, identifiers, or random characters after a node definition.
+       BAD: A["Label"] strayText
+       GOOD: A["Label"]
+    4. MANDATORY LINK ARROWS: A label |"text"| MUST ALWAYS be preceded by an arrow.
+       CORRECT: A -->|"Label"| B
+       INCORRECT: A |"Label"| B
+    5. QUOTE ALL LABELS: Always wrap text labels in DOUBLE QUOTES.
+       Example: ID["Label text"] or -->|"Link text"|
+    6. BAN SEMICOLONS: Do not use semicolons (;) anywhere. Use newlines to separate statements.
+    7. COMMENTS: Use DOUBLE percentage signs (%%). Place comments on their OWN LINE ONLY. 
+       Do not put comments on the same line as code.
+    8. NO SPECIAL CHARACTERS IN IDs: Use simple alphanumeric IDs. Put descriptive text in the ["Labels"].
   `;
 
   const fullPrompt = `
@@ -32,16 +40,18 @@ export const generateDiagramFromText = async (prompt: string, currentCode: strin
     USER REQUEST:
     ${prompt}
 
-    Please provide the updated or new Mermaid.js code:
+    Please provide the updated or new Mermaid.js code. 
+    REMARK: If adding links with labels, ensure the syntax is exactly: Node1 -->|"Label"| Node2
+    Ensure every statement is on its own line. NEVER leave stray text after a node.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: fullPrompt,
       config: {
         systemInstruction,
-        temperature: 0.4,
+        temperature: 0.2, // Lower temperature for more consistent syntax
       },
     });
 
@@ -59,12 +69,17 @@ export const fixMermaidSyntax = async (brokenCode: string, errorMessage: string)
     You are a specialized Mermaid.js syntax repair expert.
     You will be given broken Mermaid code and the specific error message from the parser.
     
-    COMMON FIXES YOU MUST APPLY:
-    1. Replace single '%' comments with double '%%'. This is a very frequent error.
-    2. Ensure labels in flowcharts following the '|label|' syntax do not contain characters that confuse the parser (e.g., semicolons or unquoted special chars).
-    3. If a semicolon is causing a 'got NODE_STRING' error, it might be misplaced or redundant—remove it or ensure it properly terminates the statement before a newline or comment.
-    4. Ensure node IDs do not contain spaces unless the node is declared with a label: ID["Label with spaces"].
-    5. Return ONLY the fixed Mermaid code. No backticks. No talk.
+    REQUIRED FIXES for "NODE_STRING" (got 'NODE_STRING', expecting 'LINK' etc):
+    1. STRAY TEXT: Look for text that isn't a node ID or a link arrow between components. 
+       Specifically, look for random words like 'aaa', 'azz', or identifiers that follow a node's closing bracket. REMOVE THEM.
+       Example: Change 'F["Car"] aaa' to 'F["Car"]'.
+    2. NO SEMICOLONS: Remove all semicolons (;).
+    3. COMMENTS: Move all comments (%%) to their own separate lines. Remove single % comments.
+    4. MISSING ARROWS: Change 'Node |Label| Node' to 'Node -->|"Label"| Node'.
+    5. QUOTE LABELS: Ensure every label inside brackets or pipes is wrapped in double quotes.
+    6. NEWLINES: Ensure each relationship or node definition is on its own line.
+    
+    Return ONLY the fixed Mermaid code. No backticks. No talk.
   `;
 
   const fullPrompt = `
@@ -74,16 +89,16 @@ export const fixMermaidSyntax = async (brokenCode: string, errorMessage: string)
     ERROR MESSAGE:
     ${errorMessage}
 
-    Fixed Mermaid code:
+    Fixed Mermaid code (remove stray text, move comments to new lines, remove semicolons):
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: fullPrompt,
       config: {
         systemInstruction,
-        temperature: 0.1, // Very low for deterministic fixing
+        temperature: 0.1,
       },
     });
 

@@ -28,8 +28,21 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
         theme: 'default',
         securityLevel: 'loose',
         fontFamily: 'Inter',
-        flowchart: { htmlLabels: true, curve: 'basis' },
+        // Suppress default error UI
+        suppressErrorConsole: true,
+        flowchart: { htmlLabels: false, curve: 'basis' },
+        sequence: { htmlLabels: false },
+        class: { htmlLabels: false },
+        state: { htmlLabels: false },
       });
+      
+      // Override the default parse error handler to prevent Mermaid from 
+      // injecting its own error div into the body.
+      // @ts-ignore
+      window.mermaid.parseError = (err: any) => {
+        // We handle errors in the render catch block, but this prevents global leaks.
+        console.debug("Intercepted Mermaid Parse Error");
+      };
     }
   }, []);
 
@@ -50,12 +63,19 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       try {
         setError(null);
         const id = `mermaid-render-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Use mermaid.parse first to validate before attempting a render
+        // @ts-ignore
+        await window.mermaid.parse(code);
+        
         // @ts-ignore
         const { svg: renderedSvg } = await window.mermaid.render(id, code);
         setSvg(renderedSvg);
       } catch (err: any) {
-        console.error("Mermaid Rendering Error:", err);
-        setError(err.message || "Invalid Mermaid syntax. Check your code or try a template.");
+        console.error("Mermaid Error Caught:", err);
+        // Extract a clean error message, removing the redundant mermaid version text if present
+        const cleanMsg = (err.message || String(err)).split('mermaid version')[0].trim();
+        setError(cleanMsg || "Invalid Mermaid syntax. Check your code.");
       }
     };
 
@@ -71,6 +91,8 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       const newZoom = Math.min(Math.max(zoom + delta, 0.1), 5);
       onZoomChange(newZoom);
     } else {
+      // Allow normal scroll if not zooming? 
+      // Actually in a fixed-height preview, we usually want wheel to zoom.
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.05 : 0.05;
       const newZoom = Math.min(Math.max(zoom + delta, 0.1), 5);
@@ -119,24 +141,32 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       className={`h-full w-full flex flex-col items-center justify-center overflow-hidden bg-white rounded-lg shadow-sm border border-slate-200 relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
     >
       {error ? (
-        <div className="flex flex-col items-center gap-4 text-center max-w-md p-8 z-10">
-          <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm font-medium shadow-sm">
-            <p className="font-bold mb-1">Syntax Error</p>
-            <p className="line-clamp-3 opacity-80 mb-3">{error}</p>
+        <div className="flex flex-col items-center gap-4 text-center max-w-md p-8 z-[100] bg-white rounded-xl shadow-xl border border-red-100">
+          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="text-red-700">
+            <h3 className="font-bold text-lg mb-2">Syntax Error</h3>
+            <div className="p-3 bg-red-50 border border-red-100 rounded-md text-sm font-mono break-words max-h-48 overflow-auto custom-scrollbar">
+              {error}
+            </div>
+            
             {onAutofix && (
               <button 
                 onClick={() => onAutofix(error)}
                 disabled={isFixing}
-                className="mt-2 w-full flex items-center justify-center gap-2 py-2 px-4 bg-indigo-600 text-white rounded-md text-xs font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                className="mt-6 w-full flex items-center justify-center gap-2 py-3 px-6 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg active:scale-95 disabled:opacity-50"
               >
-                <svg className={`w-3.5 h-3.5 ${isFixing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-4 h-4 ${isFixing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                {isFixing ? 'Fixing...' : 'Autofix with AI'}
+                {isFixing ? 'Fixing with Gemini AI...' : 'Autofix Diagram'}
               </button>
             )}
           </div>
-          <p className="text-xs text-slate-400">Diagram will update automatically as you fix the code.</p>
+          <p className="text-[10px] text-slate-400 mt-2 uppercase tracking-widest font-bold">Fix code on the left to update</p>
         </div>
       ) : svg ? (
         <div 
@@ -157,9 +187,11 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       )}
 
       {/* Helper text for interactions */}
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] text-slate-300 font-medium tracking-wide uppercase pointer-events-none">
-        Scroll to Zoom • Drag to Pan
-      </div>
+      {!error && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] text-slate-300 font-medium tracking-wide uppercase pointer-events-none">
+          Scroll to Zoom • Drag to Pan
+        </div>
+      )}
     </div>
   );
 };

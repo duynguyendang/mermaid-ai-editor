@@ -76,20 +76,79 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportPng = () => {
+    const svgElement = document.querySelector('.mermaid-container svg') as SVGSVGElement;
+    if (!svgElement) {
+      alert("No diagram found to export.");
+      return;
+    }
+
+    // Capture precise SVG dimensions
+    const width = svgElement.viewBox.baseVal.width || svgElement.width.baseVal.value || 800;
+    const height = svgElement.viewBox.baseVal.height || svgElement.height.baseVal.value || 600;
+
+    // Use a high scale for sharp PNG output
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+
+    // Standard serialization with explicit namespaces
+    const serializer = new XMLSerializer();
+    let svgString = serializer.serializeToString(svgElement);
+    
+    // Ensure the SVG string has a proper XML declaration and dimensions
+    if (!svgString.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+      svgString = svgString.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    // Use crossOrigin to help prevent tainting if external resources were somehow included
+    img.crossOrigin = 'anonymous'; 
+
+    img.onload = () => {
+      try {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, width * scale, height * scale);
+        
+        const pngUrl = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = 'diagram.png';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      } catch (err) {
+        console.error("Export Error:", err);
+        alert("Failed to export PNG. This usually happens when the diagram contains complex HTML labels. Try reducing label complexity or using SVG export.");
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+
+    img.onerror = () => {
+      console.error("Image loading failed for PNG export.");
+      URL.revokeObjectURL(url);
+      alert("Failed to process diagram for PNG export.");
+    };
+
+    img.src = url;
+  };
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(code).then(() => {
       alert('Code copied to clipboard!');
     });
   };
 
-  // Resize Handler
-  const startResizing = useCallback(() => {
-    setIsResizing(true);
-  }, []);
-
-  const stopResizing = useCallback(() => {
-    setIsResizing(false);
-  }, []);
+  const startResizing = useCallback(() => setIsResizing(true), []);
+  const stopResizing = useCallback(() => setIsResizing(false), []);
 
   const onResize = useCallback((e: MouseEvent) => {
     if (!isResizing || !containerRef.current) return;
@@ -109,19 +168,12 @@ const App: React.FC = () => {
     };
   }, [onResize, stopResizing]);
 
-  const toggleEditor = () => {
-    setIsEditorVisible(!isEditorVisible);
-  };
-
-  const adjustZoom = (delta: number) => {
-    setPreviewZoom(prev => Math.min(Math.max(prev + delta, 0.1), 5));
-  };
-
+  const toggleEditor = () => setIsEditorVisible(!isEditorVisible);
+  const adjustZoom = (delta: number) => setPreviewZoom(prev => Math.min(Math.max(prev + delta, 0.1), 5));
   const resetZoom = () => setPreviewZoom(1);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-900 select-none">
-      {/* Sleek Header */}
       <header className="h-14 flex items-center justify-between px-6 bg-slate-900 border-b border-slate-800 z-30 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white font-bold text-lg shadow-sm">
@@ -155,15 +207,20 @@ const App: React.FC = () => {
           </button>
           <button 
             onClick={handleExportSvg}
+            className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded transition-all shadow-lg active:scale-95"
+          >
+            SVG
+          </button>
+          <button 
+            onClick={handleExportPng}
             className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-all shadow-lg active:scale-95"
           >
-            Export SVG
+            Export PNG
           </button>
         </div>
       </header>
 
       <main ref={containerRef} className="flex flex-1 overflow-hidden relative">
-        {/* Templates Overlay */}
         {showTemplates && (
           <div className="absolute top-2 right-4 w-60 bg-slate-800 shadow-2xl rounded-lg border border-slate-700 z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-200">
             <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 py-1">Sample Diagrams</h3>
@@ -182,12 +239,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Left: Editor and AI (only if visible) */}
         {isEditorVisible && (
-          <div 
-            className="flex flex-col min-w-0 border-r border-slate-800 shrink-0" 
-            style={{ width: `${leftPanelWidth}%` }}
-          >
+          <div className="flex flex-col min-w-0 border-r border-slate-800 shrink-0" style={{ width: `${leftPanelWidth}%` }}>
             <div className="flex-1 overflow-hidden relative">
                <Editor code={code} onChange={setCode} />
                {isAiLoading && (
@@ -200,7 +253,6 @@ const App: React.FC = () => {
                )}
             </div>
 
-            {/* AI Magic Bar (stays with editor) */}
             <div className="p-4 bg-slate-900 border-t border-slate-800 shrink-0">
               <form onSubmit={handleAiAction} className="relative group">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000 group-focus-within:opacity-100"></div>
@@ -235,7 +287,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Resizer Handle */}
         {isEditorVisible && (
           <div 
             className={`w-1 cursor-col-resize hover:bg-indigo-500/50 active:bg-indigo-500 transition-colors z-20 shrink-0 ${isResizing ? 'bg-indigo-500' : 'bg-slate-800'}`}
@@ -243,70 +294,31 @@ const App: React.FC = () => {
           ></div>
         )}
 
-        {/* Right: Modern Preview Area */}
         <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col relative">
-          {/* Zoom & Control Tools */}
           <div className="absolute bottom-6 right-6 z-20 flex flex-col gap-2">
             <div className="flex bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-lg overflow-hidden">
-              <button 
-                onClick={() => adjustZoom(0.1)}
-                className="p-2 hover:bg-slate-100 text-slate-600 transition-colors"
-                title="Zoom In"
-              >
+              <button onClick={() => adjustZoom(0.1)} className="p-2 hover:bg-slate-100 text-slate-600 transition-colors" title="Zoom In">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
               </button>
               <div className="w-px bg-slate-200"></div>
-              <button 
-                onClick={() => adjustZoom(-0.1)}
-                className="p-2 hover:bg-slate-100 text-slate-600 transition-colors"
-                title="Zoom Out"
-              >
+              <button onClick={() => adjustZoom(-0.1)} className="p-2 hover:bg-slate-100 text-slate-600 transition-colors" title="Zoom Out">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
               </button>
               <div className="w-px bg-slate-200"></div>
-              <button 
-                onClick={resetZoom}
-                className="px-3 text-[10px] font-bold text-slate-500 hover:bg-slate-100 transition-colors"
-              >
+              <button onClick={resetZoom} className="px-3 text-[10px] font-bold text-slate-500 hover:bg-slate-100 transition-colors">
                 {Math.round(previewZoom * 100)}%
               </button>
             </div>
-            
-            {!isEditorVisible && (
-               <div className="p-4 bg-slate-900/10 backdrop-blur rounded-xl border border-slate-200 shadow-xl max-w-sm animate-in slide-in-from-right-2">
-                  <form onSubmit={handleAiAction} className="flex gap-2">
-                     <input
-                        type="text"
-                        value={aiPrompt}
-                        onChange={(e) => setAiPrompt(e.target.value)}
-                        placeholder="AI quick modify..."
-                        className="flex-1 bg-white px-3 py-2 text-xs rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                     />
-                     <button type="submit" className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                     </button>
-                  </form>
-               </div>
-            )}
           </div>
 
           <div className="absolute top-4 left-4 z-10 flex gap-2 items-center">
             <span className="px-2 py-1 bg-white/80 backdrop-blur border border-slate-200 rounded text-[10px] font-bold text-slate-400 uppercase tracking-widest shadow-sm">
               Live Render
             </span>
-            {isResizing && <span className="text-[10px] font-bold text-indigo-500 animate-pulse">RESIZING...</span>}
           </div>
 
           <div className="flex-1 p-4 md:p-8 overflow-hidden select-text">
-             <Preview 
-                code={code} 
-                zoom={previewZoom} 
-                onZoomChange={setPreviewZoom} 
-                onAutofix={handleAutofix}
-                isFixing={isAiLoading}
-             />
+             <Preview code={code} zoom={previewZoom} onZoomChange={setPreviewZoom} onAutofix={handleAutofix} isFixing={isAiLoading} />
           </div>
         </div>
       </main>
