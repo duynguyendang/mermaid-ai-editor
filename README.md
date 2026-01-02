@@ -64,7 +64,7 @@ mermaid-ai-editor/
 
 3. Set up your Gemini API key:
    - Create a `.env.local` file in the root directory
-   - Add your API key: `GEMINI_API_KEY=your_api_key_here`
+   - Add your API key: `API_KEY=your_api_key_here`
    - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
 
 4. Run the development server:
@@ -127,7 +127,7 @@ When syntax errors occur, click "Autofix with Gemini" to automatically correct c
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `GEMINI_API_KEY` | Your Google Gemini API key | Yes |
+| `API_KEY` | Your Google Gemini API key | Yes |
 
 ## Build & Deploy
 
