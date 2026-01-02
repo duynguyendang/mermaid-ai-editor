@@ -18,19 +18,22 @@ export const generateDiagramFromText = async (prompt: string, currentCode: strin
     
     CRITICAL SYNTAX RULES TO AVOID "NODE_STRING" ERRORS:
     1. ONLY return the Mermaid code block. No explanation. No backticks.
-    2. ONE STATEMENT PER LINE: Every node definition or relationship MUST be on its own line.
-    3. NO TRAILING TEXT: Never place any text, identifiers, or random characters after a node definition.
-       BAD: A["Label"] strayText
-       GOOD: A["Label"]
-    4. MANDATORY LINK ARROWS: A label |"text"| MUST ALWAYS be preceded by an arrow.
+    2. MANDATORY LINK ARROWS: A label |"text"| MUST ALWAYS be preceded by an arrow.
        CORRECT: A -->|"Label"| B
-       INCORRECT: A |"Label"| B
-    5. QUOTE ALL LABELS: Always wrap text labels in DOUBLE QUOTES.
+       INCORRECT: A |"Label"| B (This is the #1 cause of NODE_STRING errors)
+    3. NO SEMICOLONS: Never use semicolons (;) at the end of lines. Use newlines only.
+    4. NO SINGLE PERCENT COMMENTS: Comments must start with DOUBLE percentage signs (%%).
+       INCORRECT: % Comment
+       CORRECT: %% Comment
+    5. NO TRAILING TEXT: Never place random text or identifiers after a node definition.
+       BAD: C{"Label"} azz
+       GOOD: C{"Label"}
+    6. ONE STATEMENT PER LINE: Ensure every relationship is on its own line.
+    7. QUOTE ALL LABELS: Always wrap text labels in DOUBLE QUOTES.
        Example: ID["Label text"] or -->|"Link text"|
-    6. BAN SEMICOLONS: Do not use semicolons (;) anywhere. Use newlines to separate statements.
-    7. COMMENTS: Use DOUBLE percentage signs (%%). Place comments on their OWN LINE ONLY. 
-       Do not put comments on the same line as code.
-    8. NO SPECIAL CHARACTERS IN IDs: Use simple alphanumeric IDs. Put descriptive text in the ["Labels"].
+    8. For flowcharts:
+       - Use 'graph TD' or 'graph LR'.
+       - Use arrows like '-->' or '==>'.
   `;
 
   const fullPrompt = `
@@ -42,7 +45,7 @@ export const generateDiagramFromText = async (prompt: string, currentCode: strin
 
     Please provide the updated or new Mermaid.js code. 
     REMARK: If adding links with labels, ensure the syntax is exactly: Node1 -->|"Label"| Node2
-    Ensure every statement is on its own line. NEVER leave stray text after a node.
+    Ensure every statement is on its own line. NEVER use semicolons. NEVER use single % comments.
   `;
 
   try {
@@ -51,7 +54,7 @@ export const generateDiagramFromText = async (prompt: string, currentCode: strin
       contents: fullPrompt,
       config: {
         systemInstruction,
-        temperature: 0.2, // Lower temperature for more consistent syntax
+        temperature: 0.2,
       },
     });
 
@@ -69,15 +72,13 @@ export const fixMermaidSyntax = async (brokenCode: string, errorMessage: string)
     You are a specialized Mermaid.js syntax repair expert.
     You will be given broken Mermaid code and the specific error message from the parser.
     
-    REQUIRED FIXES for "NODE_STRING" (got 'NODE_STRING', expecting 'LINK' etc):
-    1. STRAY TEXT: Look for text that isn't a node ID or a link arrow between components. 
-       Specifically, look for random words like 'aaa', 'azz', or identifiers that follow a node's closing bracket. REMOVE THEM.
-       Example: Change 'F["Car"] aaa' to 'F["Car"]'.
-    2. NO SEMICOLONS: Remove all semicolons (;).
-    3. COMMENTS: Move all comments (%%) to their own separate lines. Remove single % comments.
-    4. MISSING ARROWS: Change 'Node |Label| Node' to 'Node -->|"Label"| Node'.
+    REQUIRED FIXES for "NODE_STRING" errors:
+    1. MISSING ARROWS: Find lines like "Node |Label| Node". Change them to "Node -->|\"Label\"| Node". Every pipe-label must have an arrow BEFORE it.
+    2. STRAY TEXT: Remove any "ghost" text like 'aaa', 'azz', or identifiers that appear after a node definition.
+    3. BAN SEMICOLONS: Delete all semicolons (;) from the code.
+    4. FIX COMMENTS: Change single '%' to double '%%'. Ensure comments are on their own lines.
     5. QUOTE LABELS: Ensure every label inside brackets or pipes is wrapped in double quotes.
-    6. NEWLINES: Ensure each relationship or node definition is on its own line.
+    6. NEWLINES: Ensure each relationship or node definition is on a NEW LINE.
     
     Return ONLY the fixed Mermaid code. No backticks. No talk.
   `;
@@ -89,7 +90,7 @@ export const fixMermaidSyntax = async (brokenCode: string, errorMessage: string)
     ERROR MESSAGE:
     ${errorMessage}
 
-    Fixed Mermaid code (remove stray text, move comments to new lines, remove semicolons):
+    Fixed Mermaid code (fix missing arrows before labels, remove semicolons, fix comments):
   `;
 
   try {

@@ -28,7 +28,7 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
         theme: 'default',
         securityLevel: 'loose',
         fontFamily: 'Inter',
-        // Suppress default error UI
+        logLevel: 5, // Suppress most logs
         suppressErrorConsole: true,
         flowchart: { htmlLabels: false, curve: 'basis' },
         sequence: { htmlLabels: false },
@@ -40,8 +40,8 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       // injecting its own error div into the body.
       // @ts-ignore
       window.mermaid.parseError = (err: any) => {
-        // We handle errors in the render catch block, but this prevents global leaks.
-        console.debug("Intercepted Mermaid Parse Error");
+        // We handle errors in the catch block of the render process
+        console.debug("Mermaid Parse Error Intercepted");
       };
     }
   }, []);
@@ -72,10 +72,19 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
         const { svg: renderedSvg } = await window.mermaid.render(id, code);
         setSvg(renderedSvg);
       } catch (err: any) {
-        console.error("Mermaid Error Caught:", err);
-        // Extract a clean error message, removing the redundant mermaid version text if present
-        const cleanMsg = (err.message || String(err)).split('mermaid version')[0].trim();
-        setError(cleanMsg || "Invalid Mermaid syntax. Check your code.");
+        console.error("Mermaid Render Error:", err);
+        
+        // Deep cleaning of the error message to remove Mermaid versioning and other boilerplate
+        const rawMsg = err.message || String(err);
+        
+        // Specifically target and remove "mermaid version X.Y.Z" and any redundant prefixes
+        const cleanMsg = rawMsg
+          .replace(/mermaid version \d+\.\d+\.\d+/gi, '') // Remove version string
+          .split('mermaid version')[0] // Fallback safety split
+          .replace(/\n\s*\n/g, '\n') // Remove excessive empty lines
+          .trim();
+          
+        setError(cleanMsg || "Invalid Mermaid syntax. Please check your code.");
       }
     };
 
@@ -91,8 +100,6 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       const newZoom = Math.min(Math.max(zoom + delta, 0.1), 5);
       onZoomChange(newZoom);
     } else {
-      // Allow normal scroll if not zooming? 
-      // Actually in a fixed-height preview, we usually want wheel to zoom.
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.05 : 0.05;
       const newZoom = Math.min(Math.max(zoom + delta, 0.1), 5);
@@ -141,15 +148,15 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
       className={`h-full w-full flex flex-col items-center justify-center overflow-hidden bg-white rounded-lg shadow-sm border border-slate-200 relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
     >
       {error ? (
-        <div className="flex flex-col items-center gap-4 text-center max-w-md p-8 z-[100] bg-white rounded-xl shadow-xl border border-red-100">
-          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2">
+        <div className="flex flex-col items-center gap-4 text-center max-w-md p-8 z-[100] bg-white rounded-xl shadow-xl border border-red-100 m-4 animate-in fade-in zoom-in duration-200">
+          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2 shrink-0">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <div className="text-red-700">
+          <div className="text-red-700 w-full overflow-hidden">
             <h3 className="font-bold text-lg mb-2">Syntax Error</h3>
-            <div className="p-3 bg-red-50 border border-red-100 rounded-md text-sm font-mono break-words max-h-48 overflow-auto custom-scrollbar">
+            <div className="p-3 bg-red-50 border border-red-100 rounded-md text-xs font-mono break-words max-h-48 overflow-auto custom-scrollbar text-left">
               {error}
             </div>
             
@@ -162,11 +169,11 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
                 <svg className={`w-4 h-4 ${isFixing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                {isFixing ? 'Fixing with Gemini AI...' : 'Autofix Diagram'}
+                {isFixing ? 'AI Fixing...' : 'Autofix with Gemini'}
               </button>
             )}
           </div>
-          <p className="text-[10px] text-slate-400 mt-2 uppercase tracking-widest font-bold">Fix code on the left to update</p>
+          <p className="text-[10px] text-slate-400 mt-2 uppercase tracking-widest font-bold">Please correct the syntax to refresh preview</p>
         </div>
       ) : svg ? (
         <div 
@@ -186,7 +193,6 @@ const Preview: React.FC<PreviewProps> = ({ code, zoom, onZoomChange, onAutofix, 
         </div>
       )}
 
-      {/* Helper text for interactions */}
       {!error && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] text-slate-300 font-medium tracking-wide uppercase pointer-events-none">
           Scroll to Zoom • Drag to Pan

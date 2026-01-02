@@ -18,6 +18,8 @@ const App: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const templatesRef = useRef<HTMLDivElement>(null);
+  const templatesButtonRef = useRef<HTMLButtonElement>(null);
 
   // Sync with local storage
   useEffect(() => {
@@ -28,6 +30,26 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('mermaid_code', code);
   }, [code]);
+
+  // Handle click outside for templates
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        showTemplates &&
+        templatesRef.current &&
+        !templatesRef.current.contains(event.target as Node) &&
+        templatesButtonRef.current &&
+        !templatesButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowTemplates(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showTemplates]);
 
   const handleAiAction = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -72,6 +94,17 @@ const App: React.FC = () => {
     const link = document.createElement('a');
     link.href = url;
     link.download = 'diagram.svg';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportMd = () => {
+    const mdContent = `# Mermaid Diagram\n\n\`\`\`mermaid\n${code}\n\`\`\``;
+    const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'diagram.md';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -192,8 +225,11 @@ const App: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button 
+            ref={templatesButtonRef}
             onClick={() => setShowTemplates(!showTemplates)}
-            className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-all flex items-center gap-1.5"
+            className={`px-3 py-1.5 text-xs font-semibold rounded transition-all flex items-center gap-1.5 ${
+              showTemplates ? 'text-slate-100 bg-slate-800' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+            }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" /></svg>
             Templates
@@ -206,10 +242,10 @@ const App: React.FC = () => {
             Copy
           </button>
           <button 
-            onClick={handleExportSvg}
-            className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded transition-all shadow-lg active:scale-95"
+            onClick={handleExportMd}
+            className="px-4 py-1.5 text-xs font-bold text-indigo-300 bg-slate-800 hover:bg-slate-700 border border-indigo-500/20 rounded transition-all shadow-lg active:scale-95"
           >
-            SVG
+            Export MD
           </button>
           <button 
             onClick={handleExportPng}
@@ -217,12 +253,21 @@ const App: React.FC = () => {
           >
             Export PNG
           </button>
+          <button 
+            onClick={handleExportSvg}
+            className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded transition-all shadow-lg active:scale-95"
+          >
+            Export SVG
+          </button>
         </div>
       </header>
 
       <main ref={containerRef} className="flex flex-1 overflow-hidden relative">
         {showTemplates && (
-          <div className="absolute top-2 right-4 w-60 bg-slate-800 shadow-2xl rounded-lg border border-slate-700 z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div 
+            ref={templatesRef}
+            className="absolute top-2 right-4 w-60 bg-slate-800 shadow-2xl rounded-lg border border-slate-700 z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-200"
+          >
             <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 py-1">Sample Diagrams</h3>
             <div className="space-y-0.5">
               {TEMPLATES.map(t => (
