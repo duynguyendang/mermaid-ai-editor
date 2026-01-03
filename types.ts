@@ -1,4 +1,3 @@
-
 export interface DiagramTemplate {
   id: string;
   name: string;
@@ -16,4 +15,18 @@ export interface HistoryItem {
   timestamp: number;
   code: string;
   name: string;
+}
+
+export type AIProvider = 'openai' | 'gemini';
+
+export interface ApiConfig {
+  provider: AIProvider;
+  openai: {
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+  };
+  gemini: {
+    apiKey: string;
+  };
 }

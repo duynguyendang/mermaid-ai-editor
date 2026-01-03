@@ -1,15 +1,30 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
+import ApiSettings, { ApiConfig, AIProvider } from './components/ApiSettings';
 import { DEFAULT_DIAGRAM, TEMPLATES } from './constants';
-import { generateDiagramFromText, fixMermaidSyntax } from './services/geminiService';
+import { generateDiagramFromText as generateFromGemini, fixMermaidSyntax as fixWithGemini } from './services/geminiService';
+import { generateDiagramFromText as generateFromOpenAI, fixMermaidSyntax as fixWithOpenAI } from './services/openaiService';
+
+const DEFAULT_API_CONFIG: ApiConfig = {
+  provider: 'gemini',
+  openai: {
+    apiKey: '',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+  },
+  gemini: {
+    apiKey: '',
+  },
+};
 
 const App: React.FC = () => {
   const [code, setCode] = useState<string>(DEFAULT_DIAGRAM);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(DEFAULT_API_CONFIG);
   
   // UI State
   const [isEditorVisible, setIsEditorVisible] = useState(true);
@@ -21,7 +36,24 @@ const App: React.FC = () => {
   const templatesRef = useRef<HTMLDivElement>(null);
   const templatesButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Sync with local storage
+  // Load API config from local storage
+  useEffect(() => {
+    const savedConfig = localStorage.getItem('mermaid_api_config');
+    if (savedConfig) {
+      try {
+        setApiConfig(JSON.parse(savedConfig));
+      } catch (e) {
+        console.error('Failed to parse API config:', e);
+      }
+    }
+  }, []);
+
+  // Save API config to local storage
+  useEffect(() => {
+    localStorage.setItem('mermaid_api_config', JSON.stringify(apiConfig));
+  }, [apiConfig]);
+
+  // Sync code with local storage
   useEffect(() => {
     const saved = localStorage.getItem('mermaid_code');
     if (saved) setCode(saved);
@@ -60,11 +92,25 @@ const App: React.FC = () => {
     setIsAiLoading(true);
 
     try {
-      const generatedCode = await generateDiagramFromText(userMsg, code);
+      let generatedCode: string;
+      
+      if (apiConfig.provider === 'openai') {
+        if (!apiConfig.openai.apiKey) {
+          throw new Error('Please configure your OpenAI API key in settings.');
+        }
+        generatedCode = await generateFromOpenAI(userMsg, code, apiConfig.openai);
+      } else {
+        if (!apiConfig.gemini.apiKey) {
+          throw new Error('Please configure your Gemini API key in settings.');
+        }
+        generatedCode = await generateFromGemini(userMsg, code);
+      }
+      
       setCode(generatedCode);
     } catch (err) {
       console.error(err);
-      alert('AI failed to process. Try a different prompt.');
+      const errorMessage = err instanceof Error ? err.message : 'AI failed to process. Try a different prompt.';
+      alert(errorMessage);
     } finally {
       setIsAiLoading(false);
     }
@@ -74,11 +120,25 @@ const App: React.FC = () => {
     if (isAiLoading) return;
     setIsAiLoading(true);
     try {
-      const fixedCode = await fixMermaidSyntax(code, errorMsg);
+      let fixedCode: string;
+      
+      if (apiConfig.provider === 'openai') {
+        if (!apiConfig.openai.apiKey) {
+          throw new Error('Please configure your OpenAI API key in settings.');
+        }
+        fixedCode = await fixWithOpenAI(code, errorMsg, apiConfig.openai);
+      } else {
+        if (!apiConfig.gemini.apiKey) {
+          throw new Error('Please configure your Gemini API key in settings.');
+        }
+        fixedCode = await fixWithGemini(code, errorMsg);
+      }
+      
       setCode(fixedCode);
     } catch (err) {
       console.error(err);
-      alert('AI could not fix the syntax automatically. Please check the code.');
+      const errorMessage = err instanceof Error ? err.message : 'AI could not fix the syntax automatically. Please check the code.';
+      alert(errorMessage);
     } finally {
       setIsAiLoading(false);
     }
@@ -205,6 +265,17 @@ const App: React.FC = () => {
   const adjustZoom = (delta: number) => setPreviewZoom(prev => Math.min(Math.max(prev + delta, 0.1), 5));
   const resetZoom = () => setPreviewZoom(1);
 
+  const getProviderLabel = () => {
+    switch (apiConfig.provider) {
+      case 'openai':
+        return apiConfig.openai.baseUrl.includes('openai.com') ? 'OpenAI' : 'OpenAI Compatible';
+      case 'gemini':
+        return 'Gemini';
+      default:
+        return 'AI';
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-900 select-none">
       <header className="h-14 flex items-center justify-between px-6 bg-slate-900 border-b border-slate-800 z-30 shrink-0">
@@ -221,9 +292,24 @@ const App: React.FC = () => {
           >
             {isEditorVisible ? 'Hide Editor' : 'Show Editor'}
           </button>
+          <span className="px-2 py-1 bg-slate-800 text-[10px] font-semibold text-slate-400 rounded">
+            {getProviderLabel()}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowApiSettings(true)}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-all flex items-center gap-1.5"
+            title="API Settings"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c.94-1.543-.826-3.31 2.37-2.37a1.724 1.724 0 002.572-1.065c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-1.756.426-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="hidden sm:inline">Settings</span>
+          </button>
+          <div className="h-4 w-px bg-slate-700 mx-1"></div>
           <button 
             ref={templatesButtonRef}
             onClick={() => setShowTemplates(!showTemplates)}
@@ -367,6 +453,13 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+
+      <ApiSettings
+        isOpen={showApiSettings}
+        onClose={() => setShowApiSettings(false)}
+        onSave={setApiConfig}
+        currentConfig={apiConfig}
+      />
     </div>
   );
 };
