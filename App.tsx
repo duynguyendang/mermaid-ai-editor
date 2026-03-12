@@ -1,30 +1,32 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  Layout, 
+  Copy, 
+  FileText, 
+  Image as ImageIcon, 
+  FileCode, 
+  Sparkles, 
+  Maximize2, 
+  Minimize2, 
+  Plus, 
+  Minus, 
+  RotateCcw,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Download,
+  Share2
+} from 'lucide-react';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
-import ApiSettings, { ApiConfig, AIProvider } from './components/ApiSettings';
 import { DEFAULT_DIAGRAM, TEMPLATES } from './constants';
-import { generateDiagramFromText as generateFromGemini, fixMermaidSyntax as fixWithGemini } from './services/geminiService';
-import { generateDiagramFromText as generateFromOpenAI, fixMermaidSyntax as fixWithOpenAI } from './services/openaiService';
-
-const DEFAULT_API_CONFIG: ApiConfig = {
-  provider: 'gemini',
-  openai: {
-    apiKey: '',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o-mini',
-  },
-  gemini: {
-    apiKey: '',
-  },
-};
+import { generateDiagramFromText, fixMermaidSyntax } from './services/geminiService';
 
 const App: React.FC = () => {
   const [code, setCode] = useState<string>(DEFAULT_DIAGRAM);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
-  const [showApiSettings, setShowApiSettings] = useState(false);
-  const [apiConfig, setApiConfig] = useState<ApiConfig>(DEFAULT_API_CONFIG);
   
   // UI State
   const [isEditorVisible, setIsEditorVisible] = useState(true);
@@ -36,24 +38,7 @@ const App: React.FC = () => {
   const templatesRef = useRef<HTMLDivElement>(null);
   const templatesButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Load API config from local storage
-  useEffect(() => {
-    const savedConfig = localStorage.getItem('mermaid_api_config');
-    if (savedConfig) {
-      try {
-        setApiConfig(JSON.parse(savedConfig));
-      } catch (e) {
-        console.error('Failed to parse API config:', e);
-      }
-    }
-  }, []);
-
-  // Save API config to local storage
-  useEffect(() => {
-    localStorage.setItem('mermaid_api_config', JSON.stringify(apiConfig));
-  }, [apiConfig]);
-
-  // Sync code with local storage
+  // Sync with local storage
   useEffect(() => {
     const saved = localStorage.getItem('mermaid_code');
     if (saved) setCode(saved);
@@ -92,25 +77,11 @@ const App: React.FC = () => {
     setIsAiLoading(true);
 
     try {
-      let generatedCode: string;
-      
-      if (apiConfig.provider === 'openai') {
-        if (!apiConfig.openai.apiKey) {
-          throw new Error('Please configure your OpenAI API key in settings.');
-        }
-        generatedCode = await generateFromOpenAI(userMsg, code, apiConfig.openai);
-      } else {
-        if (!apiConfig.gemini.apiKey) {
-          throw new Error('Please configure your Gemini API key in settings.');
-        }
-        generatedCode = await generateFromGemini(userMsg, code);
-      }
-      
+      const generatedCode = await generateDiagramFromText(userMsg, code);
       setCode(generatedCode);
     } catch (err) {
       console.error(err);
-      const errorMessage = err instanceof Error ? err.message : 'AI failed to process. Try a different prompt.';
-      alert(errorMessage);
+      alert('AI failed to process. Try a different prompt.');
     } finally {
       setIsAiLoading(false);
     }
@@ -120,25 +91,11 @@ const App: React.FC = () => {
     if (isAiLoading) return;
     setIsAiLoading(true);
     try {
-      let fixedCode: string;
-      
-      if (apiConfig.provider === 'openai') {
-        if (!apiConfig.openai.apiKey) {
-          throw new Error('Please configure your OpenAI API key in settings.');
-        }
-        fixedCode = await fixWithOpenAI(code, errorMsg, apiConfig.openai);
-      } else {
-        if (!apiConfig.gemini.apiKey) {
-          throw new Error('Please configure your Gemini API key in settings.');
-        }
-        fixedCode = await fixWithGemini(code, errorMsg);
-      }
-      
+      const fixedCode = await fixMermaidSyntax(code, errorMsg);
       setCode(fixedCode);
     } catch (err) {
       console.error(err);
-      const errorMessage = err instanceof Error ? err.message : 'AI could not fix the syntax automatically. Please check the code.';
-      alert(errorMessage);
+      alert('AI could not fix the syntax automatically. Please check the code.');
     } finally {
       setIsAiLoading(false);
     }
@@ -240,6 +197,12 @@ const App: React.FC = () => {
     });
   };
 
+  const clearCode = () => {
+    if (window.confirm('Are you sure you want to clear the editor?')) {
+      setCode('');
+    }
+  };
+
   const startResizing = useCallback(() => setIsResizing(true), []);
   const stopResizing = useCallback(() => setIsResizing(false), []);
 
@@ -265,17 +228,6 @@ const App: React.FC = () => {
   const adjustZoom = (delta: number) => setPreviewZoom(prev => Math.min(Math.max(prev + delta, 0.1), 5));
   const resetZoom = () => setPreviewZoom(1);
 
-  const getProviderLabel = () => {
-    switch (apiConfig.provider) {
-      case 'openai':
-        return apiConfig.openai.baseUrl.includes('openai.com') ? 'OpenAI' : 'OpenAI Compatible';
-      case 'gemini':
-        return 'Gemini';
-      default:
-        return 'AI';
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-900 select-none">
       <header className="h-14 flex items-center justify-between px-6 bg-slate-900 border-b border-slate-800 z-30 shrink-0">
@@ -290,26 +242,12 @@ const App: React.FC = () => {
               isEditorVisible ? 'bg-indigo-600/20 text-indigo-400' : 'bg-slate-800 text-slate-400 hover:text-white'
             }`}
           >
+            {isEditorVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
             {isEditorVisible ? 'Hide Editor' : 'Show Editor'}
           </button>
-          <span className="px-2 py-1 bg-slate-800 text-[10px] font-semibold text-slate-400 rounded">
-            {getProviderLabel()}
-          </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setShowApiSettings(true)}
-            className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-all flex items-center gap-1.5"
-            title="API Settings"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c.94-1.543-.826-3.31 2.37-2.37a1.724 1.724 0 002.572-1.065c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-1.756.426-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span className="hidden sm:inline">Settings</span>
-          </button>
-          <div className="h-4 w-px bg-slate-700 mx-1"></div>
           <button 
             ref={templatesButtonRef}
             onClick={() => setShowTemplates(!showTemplates)}
@@ -317,33 +255,44 @@ const App: React.FC = () => {
               showTemplates ? 'text-slate-100 bg-slate-800' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
             }`}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" /></svg>
+            <Layout size={14} />
             Templates
           </button>
           <div className="h-4 w-px bg-slate-700 mx-1"></div>
           <button 
             onClick={copyToClipboard}
-            className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-all"
+            className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-all flex items-center gap-1.5"
           >
+            <Copy size={14} />
             Copy
           </button>
           <button 
-            onClick={handleExportMd}
-            className="px-4 py-1.5 text-xs font-bold text-indigo-300 bg-slate-800 hover:bg-slate-700 border border-indigo-500/20 rounded transition-all shadow-lg active:scale-95"
+            onClick={clearCode}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded transition-all flex items-center gap-1.5"
           >
-            Export MD
+            <RotateCcw size={14} />
+            Clear
+          </button>
+          <button 
+            onClick={handleExportMd}
+            className="px-4 py-1.5 text-xs font-bold text-indigo-300 bg-slate-800 hover:bg-slate-700 border border-indigo-500/20 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
+          >
+            <FileCode size={14} />
+            MD
           </button>
           <button 
             onClick={handleExportPng}
-            className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-all shadow-lg active:scale-95"
+            className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
           >
-            Export PNG
+            <ImageIcon size={14} />
+            PNG
           </button>
           <button 
             onClick={handleExportSvg}
-            className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded transition-all shadow-lg active:scale-95"
+            className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
           >
-            Export SVG
+            <Download size={14} />
+            SVG
           </button>
         </div>
       </header>
@@ -389,9 +338,7 @@ const App: React.FC = () => {
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000 group-focus-within:opacity-100"></div>
                 <div className="relative flex items-center bg-slate-800 rounded-full overflow-hidden border border-slate-700 transition-all focus-within:border-indigo-500/50">
                   <div className="pl-4 text-indigo-400">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
+                    <Sparkles size={16} />
                   </div>
                   <input
                     type="text"
@@ -429,16 +376,20 @@ const App: React.FC = () => {
           <div className="absolute bottom-6 right-6 z-20 flex flex-col gap-2">
             <div className="flex bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-lg overflow-hidden">
               <button onClick={() => adjustZoom(0.1)} className="p-2 hover:bg-slate-100 text-slate-600 transition-colors" title="Zoom In">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                <Plus size={20} />
               </button>
               <div className="w-px bg-slate-200"></div>
               <button onClick={() => adjustZoom(-0.1)} className="p-2 hover:bg-slate-100 text-slate-600 transition-colors" title="Zoom Out">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
+                <Minus size={20} />
               </button>
               <div className="w-px bg-slate-200"></div>
-              <button onClick={resetZoom} className="px-3 text-[10px] font-bold text-slate-500 hover:bg-slate-100 transition-colors">
-                {Math.round(previewZoom * 100)}%
+              <button onClick={resetZoom} className="p-2 hover:bg-slate-100 text-slate-600 transition-colors" title="Reset Zoom">
+                <RotateCcw size={18} />
               </button>
+              <div className="w-px bg-slate-200"></div>
+              <div className="px-3 flex items-center text-[10px] font-bold text-slate-500 bg-slate-50/50">
+                {Math.round(previewZoom * 100)}%
+              </div>
             </div>
           </div>
 
@@ -453,13 +404,6 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
-
-      <ApiSettings
-        isOpen={showApiSettings}
-        onClose={() => setShowApiSettings(false)}
-        onSave={setApiConfig}
-        currentConfig={apiConfig}
-      />
     </div>
   );
 };

@@ -171,5 +171,36 @@ export const TEMPLATES: DiagramTemplate[] = [
     class BigQuery warehouse;
     class Looker,VertexAI,BigQueryML analytics;
     class Composer,Dataplex,IAM crosscutting;`
+  },
+  {
+    id: 'mindmap',
+    name: 'Mindmap',
+    icon: '🧠',
+    code: `mindmap
+  root((MermaidAI))
+    Features
+      AI Generation
+      Real-time Preview
+      Auto-fix
+    Export
+      SVG
+      PNG
+      Markdown
+    Templates
+      Flowchart
+      Sequence
+      Gantt`
+  },
+  {
+    id: 'timeline',
+    name: 'Timeline',
+    icon: '⏳',
+    code: `timeline
+    title History of Social Media
+    2002 : LinkedIn
+    2004 : Facebook
+         : Google
+    2005 : Youtube
+    2006 : Twitter`
   }
 ];

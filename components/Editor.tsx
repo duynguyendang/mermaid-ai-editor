@@ -15,7 +15,7 @@ const highlightMermaid = (code: string) => {
     { name: 'comment', regex: /%%.*/, class: 'text-slate-500 italic' },
     { name: 'string', regex: /".*?"/, class: 'text-emerald-400 font-medium' },
     { name: 'pipe-label', regex: /\|.*?\|/, class: 'text-sky-400' },
-    { name: 'keyword', regex: /\b(graph|flowchart|sequenceDiagram|classDiagram|erDiagram|gantt|pie|gitGraph|stateDiagram|journey|info|TD|LR|TB|BT|RL|subgraph|end|participant|actor|as|loop|alt|else|opt|rect|note|over|left of|right of|activate|deactivate|title|section|class|style|linkStyle|click|callback|direction)\b/, class: 'text-indigo-400 font-bold' },
+    { name: 'keyword', regex: /\b(graph|flowchart|sequenceDiagram|classDiagram|erDiagram|gantt|pie|gitGraph|stateDiagram|journey|info|mindmap|timeline|quadrantChart|sankey-beta|TD|LR|TB|BT|RL|subgraph|end|participant|actor|as|loop|alt|else|opt|rect|note|over|left of|right of|activate|deactivate|title|section|class|style|linkStyle|click|callback|direction|accTitle|accDescr|autonumber)\b/, class: 'text-indigo-400 font-bold' },
     { name: 'arrow', regex: /(-->|--|-->>|->|->>|--\)|-\)|-x|--x|==>|==|~~|~|<--|<-|<==|<-->)/, class: 'text-amber-500 font-medium' },
     { name: 'bracket', regex: /(\[|\]|\(|\)|\{|\}|>)/, class: 'text-purple-400 font-bold' },
   ];

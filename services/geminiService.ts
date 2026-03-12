@@ -34,6 +34,19 @@ export const generateDiagramFromText = async (prompt: string, currentCode: strin
     8. For flowcharts:
        - Use 'graph TD' or 'graph LR'.
        - Use arrows like '-->' or '==>'.
+    9. For sequence diagrams:
+       - Use 'sequenceDiagram'.
+       - Use 'participant' or 'actor' to define entities.
+    10. For class diagrams:
+       - Use 'classDiagram'.
+    11. For ER diagrams:
+       - Use 'erDiagram'.
+    12. For Gantt charts:
+       - Use 'gantt'.
+    13. For Mindmaps:
+       - Use 'mindmap'.
+    14. For Timelines:
+       - Use 'timeline'.
   `;
 
   const fullPrompt = `
