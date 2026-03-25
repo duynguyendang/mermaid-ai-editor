@@ -15,12 +15,23 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Download,
-  Share2
+  Share2,
+  Key,
+  Brain
 } from 'lucide-react';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
 import { DEFAULT_DIAGRAM, TEMPLATES } from './constants';
-import { generateDiagramFromText, fixMermaidSyntax } from './services/geminiService';
+import { generateDiagramFromText, fixMermaidSyntax, AiMode } from './services/geminiService';
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 const App: React.FC = () => {
   const [code, setCode] = useState<string>(DEFAULT_DIAGRAM);
@@ -33,6 +44,26 @@ const App: React.FC = () => {
   const [leftPanelWidth, setLeftPanelWidth] = useState(40); // Percentage
   const [previewZoom, setPreviewZoom] = useState(1);
   const [isResizing, setIsResizing] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [themeColor, setThemeColor] = useState('#4f46e5');
+  const [mermaidTheme, setMermaidTheme] = useState('default');
+  const [aiMode, setAiMode] = useState<AiMode>('normal');
+  const [viewMode, setViewMode] = useState<'DIAGRAM' | 'SVG'>('DIAGRAM');
+  
+  const detectThemeFromCode = (mermaidCode: string): string => {
+    const trimmed = mermaidCode.trim().toLowerCase();
+    if (trimmed.startsWith('gantt')) return 'gantt';
+    if (trimmed.startsWith('erdiagram')) return 'database';
+    if (trimmed.startsWith('mindmap')) return 'forest';
+    if (trimmed.startsWith('timeline')) return 'neutral';
+    if (trimmed.startsWith('sequencediagram')) return 'neutral';
+    if (trimmed.startsWith('classdiagram')) return 'default';
+    if (trimmed.includes('subgraph') && (trimmed.startsWith('graph') || trimmed.startsWith('flowchart'))) {
+      if (trimmed.includes('cloud') || trimmed.includes('gcp') || trimmed.includes('aws') || trimmed.includes('azure')) return 'cloud';
+      return 'layered';
+    }
+    return 'default';
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
   const templatesRef = useRef<HTMLDivElement>(null);
@@ -41,12 +72,26 @@ const App: React.FC = () => {
   // Sync with local storage
   useEffect(() => {
     const saved = localStorage.getItem('mermaid_code');
-    if (saved) setCode(saved);
+    if (saved) {
+      setCode(saved);
+      setMermaidTheme(detectThemeFromCode(saved));
+    }
+    
+    const savedColor = localStorage.getItem('mermaid_theme_color');
+    if (savedColor) setThemeColor(savedColor);
   }, []);
 
   useEffect(() => {
     localStorage.setItem('mermaid_code', code);
+    // Auto-detect theme when code changes
+    const newTheme = detectThemeFromCode(code);
+    setMermaidTheme(newTheme);
   }, [code]);
+
+  useEffect(() => {
+    localStorage.setItem('mermaid_theme_color', themeColor);
+    localStorage.setItem('mermaid_theme_preset', mermaidTheme);
+  }, [themeColor, mermaidTheme]);
 
   // Handle click outside for templates
   useEffect(() => {
@@ -77,11 +122,18 @@ const App: React.FC = () => {
     setIsAiLoading(true);
 
     try {
-      const generatedCode = await generateDiagramFromText(userMsg, code);
+      const generatedCode = await generateDiagramFromText(userMsg, code, aiMode, mermaidTheme);
       setCode(generatedCode);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('AI failed to process. Try a different prompt.');
+      const errorMsg = err?.message || String(err);
+      if (errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('429') || errorMsg.includes('spending cap')) {
+        if (window.confirm('Your API key has exceeded its spending cap or quota. Would you like to select a different API key?')) {
+          await handleSelectKey();
+        }
+      } else {
+        alert('AI failed to process. Try a different prompt.');
+      }
     } finally {
       setIsAiLoading(false);
     }
@@ -91,11 +143,18 @@ const App: React.FC = () => {
     if (isAiLoading) return;
     setIsAiLoading(true);
     try {
-      const fixedCode = await fixMermaidSyntax(code, errorMsg);
+      const fixedCode = await fixMermaidSyntax(code, errorMsg, aiMode);
       setCode(fixedCode);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('AI could not fix the syntax automatically. Please check the code.');
+      const errorMsgStr = err?.message || String(err);
+      if (errorMsgStr.includes('RESOURCE_EXHAUSTED') || errorMsgStr.includes('429') || errorMsgStr.includes('spending cap')) {
+        if (window.confirm('Your API key has exceeded its spending cap or quota. Would you like to select a different API key to try fixing the syntax?')) {
+          await handleSelectKey();
+        }
+      } else {
+        alert('AI could not fix the syntax automatically. Please check the code.');
+      }
     } finally {
       setIsAiLoading(false);
     }
@@ -197,6 +256,23 @@ const App: React.FC = () => {
     });
   };
 
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
+
   const clearCode = () => {
     if (window.confirm('Are you sure you want to clear the editor?')) {
       setCode('');
@@ -239,7 +315,7 @@ const App: React.FC = () => {
           <button 
             onClick={toggleEditor}
             className={`ml-4 px-3 py-1 text-xs font-semibold rounded transition-all flex items-center gap-1.5 ${
-              isEditorVisible ? 'bg-indigo-600/20 text-indigo-400' : 'bg-slate-800 text-slate-400 hover:text-white'
+              isEditorVisible ? 'bg-indigo-500/20 text-indigo-400' : 'bg-slate-800 text-slate-400 hover:text-white'
             }`}
           >
             {isEditorVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
@@ -248,6 +324,14 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button 
+            onClick={handleSelectKey}
+            className="px-3 py-1.5 text-xs font-semibold rounded text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-all flex items-center gap-1.5"
+            title="Change API Key (useful if quota is exceeded)"
+          >
+            <Key size={14} />
+            Switch Key
+          </button>
           <button 
             ref={templatesButtonRef}
             onClick={() => setShowTemplates(!showTemplates)}
@@ -275,14 +359,14 @@ const App: React.FC = () => {
           </button>
           <button 
             onClick={handleExportMd}
-            className="px-4 py-1.5 text-xs font-bold text-indigo-300 bg-slate-800 hover:bg-slate-700 border border-indigo-500/20 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
+            className="px-4 py-1.5 text-xs font-bold text-indigo-400 bg-slate-800 hover:bg-slate-700 border border-indigo-500/20 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
           >
             <FileCode size={14} />
             MD
           </button>
           <button 
             onClick={handleExportPng}
-            className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
+            className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded transition-all shadow-lg active:scale-95 flex items-center gap-1.5"
           >
             <ImageIcon size={14} />
             PNG
@@ -334,6 +418,26 @@ const App: React.FC = () => {
             </div>
 
             <div className="p-4 bg-slate-900 border-t border-slate-800 shrink-0">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center gap-2">
+                  <Brain size={14} className={aiMode === 'think' ? 'text-purple-400' : 'text-slate-500'} />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">AI Mode</span>
+                </div>
+                <div className="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                  <button 
+                    onClick={() => setAiMode('normal')}
+                    className={`px-3 py-1 text-[9px] font-bold rounded transition-all ${aiMode === 'normal' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    NORMAL
+                  </button>
+                  <button 
+                    onClick={() => setAiMode('think')}
+                    className={`px-3 py-1 text-[9px] font-bold rounded transition-all flex items-center gap-1 ${aiMode === 'think' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    THINK MORE
+                  </button>
+                </div>
+              </div>
               <form onSubmit={handleAiAction} className="relative group">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000 group-focus-within:opacity-100"></div>
                 <div className="relative flex items-center bg-slate-800 rounded-full overflow-hidden border border-slate-700 transition-all focus-within:border-indigo-500/50">
@@ -394,13 +498,36 @@ const App: React.FC = () => {
           </div>
 
           <div className="absolute top-4 left-4 z-10 flex gap-2 items-center">
+            <div className="flex bg-white/80 backdrop-blur border border-slate-200 rounded p-0.5 shadow-sm">
+              <button 
+                onClick={() => setViewMode('DIAGRAM')}
+                className={`px-2 py-1 text-[9px] font-bold rounded transition-all ${viewMode === 'DIAGRAM' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                DIAGRAM
+              </button>
+              <button 
+                onClick={() => setViewMode('SVG')}
+                className={`px-2 py-1 text-[9px] font-bold rounded transition-all ${viewMode === 'SVG' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                SVG
+              </button>
+            </div>
             <span className="px-2 py-1 bg-white/80 backdrop-blur border border-slate-200 rounded text-[10px] font-bold text-slate-400 uppercase tracking-widest shadow-sm">
-              Live Render
+              {viewMode === 'DIAGRAM' ? 'Live Diagram' : 'SVG Render Mode'}
             </span>
           </div>
 
           <div className="flex-1 p-4 md:p-8 overflow-hidden select-text">
-             <Preview code={code} zoom={previewZoom} onZoomChange={setPreviewZoom} onAutofix={handleAutofix} isFixing={isAiLoading} />
+             <Preview 
+                code={code} 
+                zoom={previewZoom} 
+                onZoomChange={setPreviewZoom} 
+                onAutofix={handleAutofix} 
+                isFixing={isAiLoading}
+                theme={mermaidTheme}
+                themeColor={themeColor}
+                viewMode={viewMode}
+             />
           </div>
         </div>
       </main>

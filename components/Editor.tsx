@@ -41,24 +41,30 @@ const highlightMermaid = (code: string) => {
 
     // 2. Determine which group matched and apply class
     let matchedText = match[0];
-    let appliedClass = '';
-    
-    // Find which index in match array is defined (index 1 to tokens.length)
-    for (let i = 0; i < tokens.length; i++) {
-      if (match[i + 1] !== undefined) {
-        appliedClass = tokens[i].class;
-        break;
-      }
-    }
+    let applied = false;
 
     const escapedMatch = matchedText
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+    
+    // Find which index in match array is defined (index 1 to tokens.length)
+    for (let i = 0; i < tokens.length; i++) {
+      if (match[i + 1] !== undefined) {
+        const token = tokens[i] as any;
+        if (token.class) {
+          html += `<span class="${token.class}">${escapedMatch}</span>`;
+        } else if (token.style) {
+          html += `<span style="${token.style}">${escapedMatch}</span>`;
+        } else {
+          html += escapedMatch;
+        }
+        applied = true;
+        break;
+      }
+    }
 
-    if (appliedClass) {
-      html += `<span class="${appliedClass}">${escapedMatch}</span>`;
-    } else {
+    if (!applied) {
       html += escapedMatch;
     }
 
